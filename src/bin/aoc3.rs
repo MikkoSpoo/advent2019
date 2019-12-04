@@ -68,7 +68,7 @@ fn follow_path(path: &str, mark_vec: &mut BitVec, opt_cmp_vec: Option<&BitVec>) 
         let steps = &cmd[1..];
         let steps = steps.parse().expect("Expected number as steps in path");
         //println!("Cmd: {:?}", cmd);
-        for i in 0..steps {
+        for _ in 0..steps {
             total_steps+=1;
             p.step(dir);
             // would like to make this also optional, but
@@ -128,6 +128,6 @@ fn t_1() {
                                  "U62,R66,U55,R34,D71,R55,D58,R83"),
                (Some(159), Some(610)));
     assert_eq!(pathintersections("R98,U47,R26,D63,R33,U87,L62,D20,R33,U53,R51",
-                                 "U98,R91,D20,R16,D67,R40,U7,R15,U6,R7").0,
-               Some(135));
+                                 "U98,R91,D20,R16,D67,R40,U7,R15,U6,R7"),
+               (Some(135), Some(410)));
 }
