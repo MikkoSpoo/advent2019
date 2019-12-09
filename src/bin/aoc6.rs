@@ -98,6 +98,30 @@ impl Orbitmap {
         }
         sum
     }
+
+    fn path_between_equal_depth_objs(&self, name1: &str, name2: &str) -> Option<u32> {
+        if name1 == name2 {
+            Some(0)
+        } else {
+            Some(2 + self.path_between_equal_depth_objs(&(self.get_parent_of(name1)?),
+                                                        &(self.get_parent_of(name2)?))?)
+        }
+    }
+
+    fn path_between_objs(&self, name1: &str, name2: &str) -> Option<u32> {
+        let d1 = self.count_depth(name1);
+        let d2 = self.count_depth(name2);
+        //println!("path_between_objs( {:?} d{:?} , {:?} d{:?})", name1, d1, name2, d2);
+        if d1 < d2 {
+            Some(1 + self.path_between_objs(name1, &(self.get_parent_of(name2)?))?)
+        } else if d1 > d2 {
+            Some(1 + self.path_between_objs(&(self.get_parent_of(name1))?, name2)?)
+        } else {
+            assert_eq!(d1, d2);
+            //println!("path_between_objs( {:?} d{:?} , {:?} d{:?}) equal depth", name1, d1, name2, d2);
+            self.path_between_equal_depth_objs(name1, name2)
+        }
+    }
 }
 
 #[test]
@@ -105,7 +129,17 @@ fn t_6_1_example() {
     assert_eq!(Orbitmap::new_from_file("test_data/aoc_6_1_example.txt").unwrap().sum_depths(), 42);
 }
 
+#[test]
+fn t_6_2_example() {
+    let om = Orbitmap::new_from_file("test_data/aoc_6_1_example.txt").unwrap();
+    assert_eq!(om.path_between_equal_depth_objs("H", "D"), Some(4));
+    assert_eq!(om.path_between_equal_depth_objs("B", "K"), None);
+    assert_eq!(om.path_between_objs("K", "I"), Some(4));
+}
+
 fn main() -> std::io::Result<()> {
-    println!("{:?}", Orbitmap::new_from_file("input_data/aoc6.txt")?.sum_depths());
+    let om = Orbitmap::new_from_file("input_data/aoc6.txt")?;
+    println!("Phase1: {:?}", om.sum_depths());
+    println!("Phase2: {:?}", om.path_between_objs("YOU", "SAN").unwrap() - 2);
     Ok(())
 }
