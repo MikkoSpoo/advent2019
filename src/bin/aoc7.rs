@@ -62,9 +62,10 @@ fn find_highest_trust_perm(rom: & Vec<i32>) -> Option<i32> {
     return highest_thrust;
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Phase 1: {:?}",
-             find_highest_trust_perm(&(vec![3,15,3,16,1002,16,10,16,1,16,15,15,4,15,99,0,0])));
+             find_highest_trust_perm(&(intcode::mem_from_file("input_data/aoc7.txt")?)));
+    Ok(())
 }
 
 #[test]
@@ -72,6 +73,6 @@ fn t_aoc7() {
     assert_eq!(run_amplifiers(&(vec![3,15,3,16,1002,16,10,16,1,16,15,15,4,15,99,0,0]),
                               &(vec![4,3,2,1,0])),
                Some(43210));
-    assert_eq!(find_highest_trust_perm(&(vec![3,15,3,16,1002,16,10,16,1,16,15,15,4,15,99,0,0])),
+    assert_eq!(find_highest_trust_perm(&(intcode::mem_from_file("test_data/aoc_7_1_example1.txt").unwrap())),
                Some(43210));
 }

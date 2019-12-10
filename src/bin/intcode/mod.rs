@@ -7,6 +7,24 @@
 //use std::iter;
 // https://hermanradtke.com/2015/06/22/effectively-using-iterators-in-rust.html
 
+use std::io;
+use std::io::Read;
+use std::fs::File;
+
+pub fn mem_from_string(s: &str) -> Result<Vec<i32>, Box<dyn std::error::Error>> {
+    let mut r :Vec<i32> = Vec::new();
+    for s in s.trim().split(',') {
+        r.push(s.parse()?)
+    }
+    Ok(r)
+}
+
+pub fn mem_from_file(filename: &str) -> Result<Vec<i32>, Box<dyn std::error::Error>> {
+    let mut s = String::new();
+    File::open(filename)?.read_to_string(&mut s)?;
+    mem_from_string(&s)
+}
+
 pub fn run_inpv(ram: &mut Vec<i32>, input: &Vec<i32>) -> Vec<i32> {
     //println!("Hello, world! ram={:?}", ram);
     let mut pc: usize = 0;
