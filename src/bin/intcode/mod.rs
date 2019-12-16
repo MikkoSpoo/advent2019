@@ -7,8 +7,26 @@
 //use std::iter;
 // https://hermanradtke.com/2015/06/22/effectively-using-iterators-in-rust.html
 
+use std::io::Read;
+use std::fs::File;
+
+use std::sync::mpsc::{Sender, Receiver};
+
+pub fn mem_from_string(s: &str) -> Result<Vec<i32>, Box<dyn std::error::Error>> {
+    let mut r :Vec<i32> = Vec::new();
+    for s in s.trim().split(',') {
+        r.push(s.parse()?)
+    }
+    Ok(r)
+}
+
+pub fn mem_from_file(filename: &str) -> Result<Vec<i32>, Box<dyn std::error::Error>> {
+    let mut s = String::new();
+    File::open(filename)?.read_to_string(&mut s)?;
+    mem_from_string(&s)
+}
+
 pub fn run_inpv(ram: &mut Vec<i32>, input: &Vec<i32>) -> Vec<i32> {
-    //println!("Hello, world! ram={:?}", ram);
     let mut pc: usize = 0;
     let mut v_output: Vec<i32> = vec![];
     let mut inputpos = 0;
@@ -27,6 +45,13 @@ pub fn run_inpv(ram: &mut Vec<i32>, input: &Vec<i32>) -> Vec<i32> {
             None => break
         }
         if usedinput {
+            match inputval {
+                None => {
+                    //println!("Out of input");
+                    break;
+                }
+                Some(_) => ()
+            }
             inputpos += 1;
             inputval = match input.get(inputpos) {
                 None => None,
@@ -34,8 +59,46 @@ pub fn run_inpv(ram: &mut Vec<i32>, input: &Vec<i32>) -> Vec<i32> {
             }
         }
     }
-    //println!("Goodbye, world! ram={:?} Last output={:?}", ram, last_output);
     v_output
+}
+
+pub fn run_channels(ram: &mut Vec<i32>, rx: Receiver<i32>, tx: Sender<i32>) -> Result<Vec<i32>, Box<dyn std::error::Error>> {
+    //println!("Hello, world! ram={:?}", ram);
+    let mut pc: usize = 0;
+    let mut v_output: Vec<i32> = vec![];
+    let mut inputval = None;
+    // could try_recv value here to be ready
+    // match input.get(inputpos) {
+    //    None => None,
+    //    Some(v) => Some(*v)
+    //};
+    loop {
+        let (optnewpc, optoutput, usedinput) = step(pc, ram, inputval);
+        match optoutput {
+            None => {},
+            Some(output) => { v_output.push(output);
+                              let _ = tx.send(output); }
+        }
+        match optnewpc {
+            Some(newpc) => pc = newpc,
+            None => break
+        }
+        if usedinput {
+            match inputval {
+                None => {
+                    //println!("pc {:?} reading input", pc);
+                    inputval = Some(rx.recv()?); // blocks
+                },
+                Some(_) => {
+                    // used value
+                    // could try_recv value here to be ready
+                    inputval = None;
+                },
+            }
+        }
+    }
+    //println!("Goodbye, world! ram={:?} Last output={:?}", ram, last_output);
+    Ok(v_output)
 }
 
 pub fn run_inpi(ram: &mut Vec<i32>, input: i32) -> Vec<i32> {
@@ -94,10 +157,12 @@ fn step(pc: usize, ram: &mut Vec<i32>, input: Option<i32>)
             let a = getarglocs(pc, 1, ram);
             match input {
                 None => {
-                    panic!("pc {:?} no input", pc);
+                    //println!("Needs input, not given, doing nothing");
+                    usedinput=true;
+                    Some(pc)
                 },
                 Some(v) => {
-                    println!("INPUT: {} to loc {}", v, a[0]);
+                    //println!("INPUT: {} to loc {}", v, a[0]);
                     ram[a[0]] = v;
                     usedinput = true;
                     Some(pc + 2)
@@ -105,7 +170,7 @@ fn step(pc: usize, ram: &mut Vec<i32>, input: Option<i32>)
             }
         } else if c == 4 {
             let a = getarglocs(pc, 1, ram);
-            println!("OUTPUT: {}", ram[a[0]]);
+            //println!("OUTPUT: {}", ram[a[0]]);
             output = Some(ram[a[0]]);
             Some(pc + 2)
         } else if c == 5 {
