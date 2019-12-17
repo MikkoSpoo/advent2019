@@ -10,70 +10,47 @@
 use std::io::Read;
 use std::fs::File;
 
-use std::sync::mpsc::{Sender, Receiver};
+use std::sync::mpsc::{channel, Sender, Receiver};
 
-pub fn mem_from_string(s: &str) -> Result<Vec<i32>, Box<dyn std::error::Error>> {
-    let mut r :Vec<i32> = Vec::new();
+pub fn mem_from_string(s: &str) -> Result<Vec<i128>, Box<dyn std::error::Error>> {
+    let mut r :Vec<i128> = Vec::new();
     for s in s.trim().split(',') {
         r.push(s.parse()?)
     }
     Ok(r)
 }
 
-pub fn mem_from_file(filename: &str) -> Result<Vec<i32>, Box<dyn std::error::Error>> {
+pub fn mem_from_file(filename: &str) -> Result<Vec<i128>, Box<dyn std::error::Error>> {
     let mut s = String::new();
     File::open(filename)?.read_to_string(&mut s)?;
     mem_from_string(&s)
 }
 
-pub fn run_inpv(ram: &mut Vec<i32>, input: &Vec<i32>) -> Vec<i32> {
-    let mut pc: usize = 0;
-    let mut v_output: Vec<i32> = vec![];
-    let mut inputpos = 0;
-    let mut inputval = match input.get(inputpos) {
-        None => None,
-        Some(v) => Some(*v)
-    };
-    loop {
-        let (optnewpc, optoutput, usedinput) = step(pc, ram, inputval);
-        match optoutput {
-            None => {},
-            Some(output) => { v_output.push(output) }
-        }
-        match optnewpc {
-            Some(newpc) => pc = newpc,
-            None => break
-        }
-        if usedinput {
-            match inputval {
-                None => {
-                    //println!("Out of input");
-                    break;
-                }
-                Some(_) => ()
-            }
-            inputpos += 1;
-            inputval = match input.get(inputpos) {
-                None => None,
-                Some(v) => Some(*v)
-            }
-        }
+pub fn run_inpv(ram: &mut Vec<i128>, input: &Vec<i128>) -> Vec<i128> {
+    let (inputtx, inputrx) = channel();
+    let (outputtx, outputrx) = channel();
+    for d in input {
+        inputtx.send(*d).unwrap();
     }
-    v_output
+    drop(inputtx);
+    drop(outputrx); // give closed channels
+    run_channels(ram, inputrx, outputtx).unwrap()
 }
 
-pub fn run_channels(ram: &mut Vec<i32>, rx: Receiver<i32>, tx: Sender<i32>) -> Result<Vec<i32>, Box<dyn std::error::Error>> {
+pub fn run_channels(ram: &mut Vec<i128>, rx: Receiver<i128>, tx: Sender<i128>) -> Result<Vec<i128>, Box<dyn std::error::Error>> {
     //println!("Hello, world! ram={:?}", ram);
     let mut pc: usize = 0;
-    let mut v_output: Vec<i32> = vec![];
+    let mut v_output: Vec<i128> = vec![];
     let mut inputval = None;
+    let mut relative_base: i128 = 0;
     // could try_recv value here to be ready
     // match input.get(inputpos) {
     //    None => None,
     //    Some(v) => Some(*v)
     //};
     loop {
-        let (optnewpc, optoutput, usedinput) = step(pc, ram, inputval);
+        let (optnewpc, next_relative_base, optoutput, usedinput) = step(pc, relative_base, ram, inputval);
+        relative_base = next_relative_base;
         match optoutput {
             None => {},
             Some(output) => { v_output.push(output);
@@ -101,28 +78,44 @@ pub fn run_channels(ram: &mut Vec<i32>, rx: Receiver<i32>, tx: Sender<i32>) -> R
     Ok(v_output)
 }
 
-pub fn run_inpi(ram: &mut Vec<i32>, input: i32) -> Vec<i32> {
+pub fn run_inpi(ram: &mut Vec<i128>, input: i128) -> Vec<i128> {
     run_inpv(ram, &(vec![input]))
 }
 
-pub fn run(ram: &mut Vec<i32>) -> Vec<i32> {
+pub fn run(ram: &mut Vec<i128>) -> Vec<i128> {
     run_inpv(ram, &(vec![]))
 }
 
-fn getarglocs(pc: usize, numofargs: usize, ram: &mut Vec<i32>)
+// TODO: use splices / mutable references
+// Increases memory size to fit references
+// TODO: could only resize on write
+fn getarglocs(pc: usize, relative_base: i128,
+              numofargs: usize, ram: &mut Vec<i128>)
               -> Vec<usize>
 {
     let mut r = vec![0;numofargs];
     let mut o = ram[pc] / 100;
     for i in 0..numofargs {
         let loc = pc + i + 1;
-        r[i] = if o % 10 != 0 {
-            // immediate
-            loc
-        } else {
-            // normal: location
+        let mode = o % 10;
+        r[i] = if mode == 0 {
+            // 0 normal: location
             ram[loc] as usize
+        } else if mode == 1 {
+            // 1: immediate
+            loc
+        } else if mode == 2 {
+            // 2: relative
+            println!("pc {:?} op {:?} arg {:?} relative_base {:?} arg {:?}",
+                     pc, ram[pc], i, relative_base, ram[loc]);
+            (ram[loc] + relative_base) as usize
+        } else {
+            panic!("pc {:?} op {:?} invalid mode {:?}", pc, o, mode);
         };
+        if r[i] >= ram.len() {
+            println!("pc {:?} resizing mem {} -> {}", pc, ram.len(), r[i]+1);
+            ram.resize(r[i]+1, 0);
+        }
         o = o / 10;
     }
     r
@@ -130,31 +123,32 @@ fn getarglocs(pc: usize, numofargs: usize, ram: &mut Vec<i32>)
 
 #[test]
 fn t_intcode_getarglocs() {
-
-    assert_eq!(getarglocs(0, 3, &mut vec![1101,100,-1,4,0]),
+    assert_eq!(getarglocs(0, 0, 3, &mut vec![1101,100,-1,4,0]),
                vec![1, 2, 4]);
 
 }
 
-fn step(pc: usize, ram: &mut Vec<i32>, input: Option<i32>)
-        -> (Option<usize>, Option<i32>, bool) {
+fn step(pc: usize, relative_base: i128,
+        ram: &mut Vec<i128>, input: Option<i128>)
+        -> (Option<usize>, i128, Option<i128>, bool) {
     let op = ram[pc];
     let c = op % 100;
+    let mut next_relative_base = relative_base;
     let mut usedinput = false;
-    let mut output: Option<i32> = None;
+    let mut output: Option<i128> = None;
     let next_pc :Option<usize> =
         if c == 99 {
             None
         } else if c == 1 {
-            let a = getarglocs(pc, 3, ram);
+            let a = getarglocs(pc, relative_base, 3, ram);
             ram[a[2]] = ram[a[0]] + ram[a[1]];
             Some(pc + 4)
         } else if c == 2 {
-            let a = getarglocs(pc, 3, ram);
+            let a = getarglocs(pc, relative_base, 3, ram);
             ram[a[2]] = ram[a[0]] * ram[a[1]];
             Some(pc + 4)
         } else if c == 3 {
-            let a = getarglocs(pc, 1, ram);
+            let a = getarglocs(pc, relative_base, 1, ram);
             match input {
                 None => {
                     //println!("Needs input, not given, doing nothing");
@@ -169,15 +163,15 @@ fn step(pc: usize, ram: &mut Vec<i32>, input: Option<i32>)
                 }
             }
         } else if c == 4 {
-            let a = getarglocs(pc, 1, ram);
-            //println!("OUTPUT: {}", ram[a[0]]);
+            let a = getarglocs(pc, relative_base, 1, ram);
+            println!("OUTPUT: {}", ram[a[0]]);
             output = Some(ram[a[0]]);
             Some(pc + 2)
         } else if c == 5 {
             // Opcode 5 is jump-if-true: if the first parameter is non-zero,
             // it sets the instruction pointer to the value from the second
             // parameter. Otherwise, it does nothing.
-            let a = getarglocs(pc, 2, ram);
+            let a = getarglocs(pc, relative_base, 2, ram);
             if ram[a[0]] != 0 {
                 Some(ram[a[1]] as usize)
             } else {
@@ -187,14 +181,14 @@ fn step(pc: usize, ram: &mut Vec<i32>, input: Option<i32>)
             // Opcode 6 is jump-if-false: if the first parameter is zero, it sets
             // the instruction pointer to the value from the second parameter.
             // Otherwise, it does nothing.
-            let a = getarglocs(pc, 2, ram);
+            let a = getarglocs(pc, relative_base, 2, ram);
             if ram[a[0]] == 0 {
                 Some(ram[a[1]] as usize)
             } else {
                 Some(pc + 3)
             }
         } else if c == 7 {
-            let a = getarglocs(pc, 3, ram);
+            let a = getarglocs(pc, relative_base, 3, ram);
             ram[a[2]] = if ram[a[0]] < ram[a[1]] {
                 1
             } else {
@@ -202,21 +196,28 @@ fn step(pc: usize, ram: &mut Vec<i32>, input: Option<i32>)
             };
             Some(pc + 4)
         } else if c == 8 {
-            let a = getarglocs(pc, 3, ram);
+            let a = getarglocs(pc, relative_base, 3, ram);
             ram[a[2]] = if ram[a[0]] == ram[a[1]] {
                 1
             } else {
                 0
             };
             Some(pc + 4)
+        } else if c == 9 {
+            // Opcode 9 adjusts the relative base by the value of its only parameter
+            let a = getarglocs(pc, relative_base, 1, ram);
+            next_relative_base = next_relative_base + ram[a[0]];
+            println!("pc {:?} op {:?} relative_base {:?} arg at {:?} adjust by {:?} {:?}",
+                     pc, op, relative_base, a[0], ram[a[0]], next_relative_base);
+            Some(pc + 2)
         } else {
             panic!("pc {:?} bad instruction {:?}", pc, op);
         };
-    (next_pc, output, usedinput)
+    (next_pc, next_relative_base, output, usedinput)
 }
 
 // for test
-fn rtl(ram: &mut Vec<i32>, input: i32) -> Option<i32> {
+fn rtl(ram: &mut Vec<i128>, input: i128) -> Option<i128> {
     Some(*(run_inpi(ram, input).last()?))
 }
 
@@ -266,4 +267,15 @@ fn t_intcode_aoc5_phase2() {
                              1106,0,36,98,0,0,1002,21,125,20,4,20,1105,1,46,104,
                              999,1105,1,46,1101,1000,1,20,4,20,1105,1,46,98,99], 9),
                Some(1001));
+}
+
+#[test]
+fn t_intcode_aoc9_phase1() {
+    // takes no input and produces a copy of itself as output.
+    assert_eq!(rtl(&mut vec![109,1,204,-1,1001,100,1,100,1008,100,16,101,1006,101,0,99], 0),
+               Some(99));
+    // should output the large number in the middle
+    assert_eq!(rtl(&mut vec![104,1125899906842624,99], 0),
+               Some(1125899906842624));
+
 }
