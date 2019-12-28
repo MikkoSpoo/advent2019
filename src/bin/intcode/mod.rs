@@ -106,14 +106,14 @@ fn getarglocs(pc: usize, relative_base: i128,
             loc
         } else if mode == 2 {
             // 2: relative
-            println!("pc {:?} op {:?} arg {:?} relative_base {:?} arg {:?}",
-                     pc, ram[pc], i, relative_base, ram[loc]);
+            //println!("pc {:?} op {:?} arg {:?} relative_base {:?} arg {:?}",
+            //         pc, ram[pc], i, relative_base, ram[loc]);
             (ram[loc] + relative_base) as usize
         } else {
             panic!("pc {:?} op {:?} invalid mode {:?}", pc, o, mode);
         };
         if r[i] >= ram.len() {
-            println!("pc {:?} resizing mem {} -> {}", pc, ram.len(), r[i]+1);
+            //println!("pc {:?} resizing mem {} -> {}", pc, ram.len(), r[i]+1);
             ram.resize(r[i]+1, 0);
         }
         o = o / 10;
@@ -164,7 +164,7 @@ fn step(pc: usize, relative_base: i128,
             }
         } else if c == 4 {
             let a = getarglocs(pc, relative_base, 1, ram);
-            println!("OUTPUT: {}", ram[a[0]]);
+            //println!("OUTPUT: {}", ram[a[0]]);
             output = Some(ram[a[0]]);
             Some(pc + 2)
         } else if c == 5 {
@@ -207,8 +207,8 @@ fn step(pc: usize, relative_base: i128,
             // Opcode 9 adjusts the relative base by the value of its only parameter
             let a = getarglocs(pc, relative_base, 1, ram);
             next_relative_base = next_relative_base + ram[a[0]];
-            println!("pc {:?} op {:?} relative_base {:?} arg at {:?} adjust by {:?} {:?}",
-                     pc, op, relative_base, a[0], ram[a[0]], next_relative_base);
+            //println!("pc {:?} op {:?} relative_base {:?} arg at {:?} adjust by {:?} {:?}",
+            //         pc, op, relative_base, a[0], ram[a[0]], next_relative_base);
             Some(pc + 2)
         } else {
             panic!("pc {:?} bad instruction {:?}", pc, op);
