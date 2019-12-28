@@ -6,17 +6,17 @@ use std::sync::mpsc::{channel, Sender, Receiver};
 
 mod intcode;
 
-fn run_amplifier(rom: & Vec<i32>,
-                 phase_setting :i32,
-                 input_signal: i32)
-                 -> Option<i32> {
+fn run_amplifier(rom: & Vec<i128>,
+                 phase_setting :i128,
+                 input_signal: i128)
+                 -> Option<i128> {
     let mut ram = rom.clone();
-    let v_output = intcode::run_inpv(&mut ram, & vec![phase_setting, input_signal]);
+    let v_output = intcode::run_inpv(&mut ram, & vec![phase_setting, input_signal.into()]);
     Some(*(v_output.last()?)) // last output, or None
 }
 
-fn run_amplifiers(rom: & Vec<i32>, phase_settings: & Vec<i32>) -> Option<i32> {
-    let mut signal = 0;
+fn run_amplifiers(rom: & Vec<i128>, phase_settings: & Vec<i128>) -> Option<i128> {
+    let mut signal: i128 = 0;
     for ps in phase_settings {
         signal = run_amplifier(rom, *ps, signal)?
     }
@@ -24,7 +24,7 @@ fn run_amplifiers(rom: & Vec<i32>, phase_settings: & Vec<i32>) -> Option<i32> {
 }
 
 // https://en.wikipedia.org/wiki/Heap%27s_algorithm
-fn heaps_alg(k : usize, v: &mut Vec<i32>, v_out :&mut Vec<Vec<i32>>) {
+fn heaps_alg(k : usize, v: &mut Vec<i128>, v_out :&mut Vec<Vec<i128>>) {
     if k == 1 {
         v_out.push(v.clone());
     } else {
@@ -49,9 +49,9 @@ fn heaps_alg(k : usize, v: &mut Vec<i32>, v_out :&mut Vec<Vec<i32>>) {
     }
 }
 
-fn find_highest_trust_perm(rom: & Vec<i32>) -> Option<i32> {
-    let mut perms :Vec<Vec<i32>> = Vec::new();
-    let mut highest_thrust :Option<i32> = None;
+fn find_highest_trust_perm(rom: & Vec<i128>) -> Option<i128> {
+    let mut perms :Vec<Vec<i128>> = Vec::new();
+    let mut highest_thrust :Option<i128> = None;
     heaps_alg(5, &mut (vec![0, 1, 2, 3, 4]), &mut perms);
     for v in perms {
         println!("v {:?}", v);
@@ -66,9 +66,9 @@ fn find_highest_trust_perm(rom: & Vec<i32>) -> Option<i32> {
     return highest_thrust;
 }
 
-fn find_highest_trust_perm2(rom: & Vec<i32>) -> Option<i32> {
-    let mut perms :Vec<Vec<i32>> = Vec::new();
-    let mut highest_thrust :Option<i32> = None;
+fn find_highest_trust_perm2(rom: & Vec<i128>) -> Option<i128> {
+    let mut perms :Vec<Vec<i128>> = Vec::new();
+    let mut highest_thrust :Option<i128> = None;
     heaps_alg(5, &mut (vec![5, 6, 7, 8, 9]), &mut perms);
     for v in perms {
         println!("v {:?}", v);
@@ -84,7 +84,7 @@ fn find_highest_trust_perm2(rom: & Vec<i32>) -> Option<i32> {
 }
 
 
-fn run_amp2(rom: & Vec<i32>, rx: Receiver<i32>, tx: Sender<i32>) ->  JoinHandle<Vec<i32>> {
+fn run_amp2(rom: & Vec<i128>, rx: Receiver<i128>, tx: Sender<i128>) ->  JoinHandle<Vec<i128>> {
     let mut ram = rom.clone();
     thread::spawn( move || {    
         match intcode::run_channels(&mut ram, rx, tx) {
@@ -98,12 +98,12 @@ fn run_amp2(rom: & Vec<i32>, rx: Receiver<i32>, tx: Sender<i32>) ->  JoinHandle<
     })
 }
 
-fn run_feedback_loop(rom: & Vec<i32>, phase_settings: & Vec<i32>) -> Option<i32> {
-    let (tx_a, rx_b) = channel();
-    let (tx_b, rx_c) = channel();
-    let (tx_c, rx_d) = channel();
-    let (tx_d, rx_e) = channel();
-    let (tx_e, rx_a) = channel();
+fn run_feedback_loop(rom: & Vec<i128>, phase_settings: & Vec<i128>) -> Option<i128> {
+    let (tx_a, rx_b) = channel::<i128>();
+    let (tx_b, rx_c) = channel::<i128>();
+    let (tx_c, rx_d) = channel::<i128>();
+    let (tx_d, rx_e) = channel::<i128>();
+    let (tx_e, rx_a) = channel::<i128>();
     tx_e.send(phase_settings[0]).unwrap(); // to a
     tx_a.send(phase_settings[1]).unwrap();
     tx_b.send(phase_settings[2]).unwrap();
